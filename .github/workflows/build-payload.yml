@@ -50,9 +50,15 @@ jobs:
           set -e
           unzip -o -q lara-overlay.zip -d src
           cp -f project.yml src/project.yml
-          for f in App.swift ShellBootstrap.swift Globals.swift Info.plist; do
-            if [ -f "Liebao/$f" ]; then cp -f "Liebao/$f" "src/Liebao/$f"; echo "覆盖 Liebao/$f"; fi
+          # 覆盖所有我们改过的 Liebao/*.swift（ContentView 之前漏掉了）
+          for f in App.swift ContentView.swift ShellBootstrap.swift Globals.swift Info.plist; do
+            if [ -f "Liebao/$f" ]; then
+              cp -f "Liebao/$f" "src/Liebao/$f"
+              echo "覆盖 Liebao/$f  ($(wc -c < "src/Liebao/$f") bytes)"
+            fi
           done
+          echo "--- 校验关键字符串 ---"
+          grep -c "自检" src/Liebao/ContentView.swift || echo "ContentView 里没有自检字样！"
           echo "lara files: $(find src/lara -type f | wc -l | tr -d ' ')"
           echo "www files:  $(find src/www -type f 2>/dev/null | wc -l | tr -d ' ')"
 
