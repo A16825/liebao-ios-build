@@ -34,6 +34,8 @@ enum ShellBootstrap {
         started = true
         // 只记录环境，不做任何危险操作
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            // 先把上次崩溃可能留下的符号链接还原，避免数据目录一直是坏的
+            wq_recover()
             log("外壳已就绪")
             log("设备 \(KeychainDumpManager.sysctlString("hw.machine") ?? "?") / iOS \(UIDevice.current.systemVersion)")
             log("安全模式：不会自动提权。需要时请在自检页手动触发")
