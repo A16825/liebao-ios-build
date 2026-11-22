@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
 
     steps:
@@ -22,6 +22,8 @@ jobs:
         run: |
           xcodebuild -version
           sw_vers
+          xcrun --sdk iphoneos --show-sdk-version
+          ls /Applications | grep -i xcode || true
 
       - name: 安装 XcodeGen + ldid
         run: |
