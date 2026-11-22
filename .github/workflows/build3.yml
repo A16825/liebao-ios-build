@@ -1,0 +1,28 @@
+name: Build IPA ASCII
+on: {workflow_dispatch: {}}
+permissions: {contents: read}
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: cat ios-app-clean2.zip.part1 ios-app-clean2.zip.part2 > ios-app-clean2.zip
+      - run: |
+          rm -rf src && mkdir src
+          unzip -q ios-app-clean2.zip -d src
+          find src -maxdepth 1 -type f -o -maxdepth 1 -type d | sort
+      - run: brew install xcodegen
+      - working-directory: src
+        run: xcodegen generate
+      - working-directory: src
+        run: |
+          xcodebuild -project Liebao.xcodeproj -scheme Liebao -configuration Release -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tee build.log
+      - working-directory: src
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/*.app Payload/
+          zip -r Liebao-unsigned.ipa Payload
+          ls -lh Liebao-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with: {name: Liebao-unsigned-ipa, path: src/Liebao-unsigned.ipa}
