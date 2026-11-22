@@ -1,0 +1,80 @@
+name: Liebao
+options:
+  bundleIdPrefix: top.vivi9
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    ARCHS: arm64e
+    ONLY_ACTIVE_ARCH: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+    MARKETING_VERSION: "1.1"
+    CURRENT_PROJECT_VERSION: "2"
+    # lara 的 C 代码需要桥接头与头文件/库搜索路径
+    SWIFT_OBJC_BRIDGING_HEADER: "lara/lara-Bridging-Header.h"
+    HEADER_SEARCH_PATHS:
+      - "$(inherited)"
+      - "$(SRCROOT)/lara"
+      - "$(SRCROOT)/lara/kexploit"
+      - "$(SRCROOT)/lara/lib"
+      - "$(SRCROOT)/lara/lib/choma"
+    LIBRARY_SEARCH_PATHS:
+      - "$(inherited)"
+      - "$(SRCROOT)/lara/lib"
+    LD_RUNPATH_SEARCH_PATHS:
+      - "$(inherited)"
+      - "@executable_path/Frameworks"
+    CLANG_ENABLE_MODULES: YES
+    CLANG_ENABLE_OBJC_ARC: YES
+    CLANG_WARN_DOCUMENTATION_COMMENTS: NO
+    GCC_WARN_INHIBIT_ALL_WARNINGS: YES
+
+targets:
+  Liebao:
+    type: application
+    platform: iOS
+    sources:
+      - path: Liebao
+      - path: lara
+        excludes:
+          - "lara.swift"
+          - "views/ContentView.swift"
+          - "views/app/ContentView.swift"
+          - "web/**"
+          - "**/*.bak*"
+      - path: Config
+        type: folder
+      - path: www
+        type: folder
+    dependencies:
+      - framework: lara/lib/libxpf.dylib
+        embed: true
+        codeSign: false
+      - framework: lara/lib/libgrabkernel2.dylib
+        embed: true
+        codeSign: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: top.vivi9.liebao
+        PRODUCT_NAME: Liebao
+        INFOPLIST_FILE: Liebao/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE: NO
+        CODE_SIGN_ENTITLEMENTS: Config/lara.entitlements
+        OTHER_LDFLAGS:
+          - "-ObjC"
+    scheme:
+      testTargets: []
+      gatherCoverageData: false
