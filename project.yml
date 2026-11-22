@@ -75,7 +75,7 @@ targets:
         codeSign: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: top.vivi9.liebao
+        PRODUCT_BUNDLE_IDENTIFIER: com.cd-rail.zhct
         PRODUCT_NAME: Liebao
         INFOPLIST_FILE: Liebao/Info.plist
         GENERATE_INFOPLIST_FILE: NO
