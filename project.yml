@@ -52,6 +52,9 @@ targets:
           - "views/app/ContentView.swift"
           - "web/**"
           - "**/*.bak*"
+          - "Info.plist"
+          - "**/Info.plist"
+          - "**/*.entitlements"
       - path: Config
         type: folder
       - path: www
