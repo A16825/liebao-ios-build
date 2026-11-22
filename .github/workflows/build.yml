@@ -1,0 +1,49 @@
+name: Build Unsigned IPA
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Join source
+        run: cat ios-app-source.zip.part1 ios-app-source.zip.part2 > ios-app-source.zip
+      - name: Unzip
+        run: |
+          rm -rf src
+          mkdir src
+          unzip -q ios-app-source.zip -d src
+          ls -la src | head
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        working-directory: src
+        run: xcodegen generate
+      - name: Build
+        working-directory: src
+        run: |
+          xcodebuild \
+            -project Liebao.xcodeproj \
+            -scheme Liebao \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | tee build.log
+      - name: Package
+        working-directory: src
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/*.app Payload/
+          zip -r Liebao-unsigned.ipa Payload
+          ls -lh Liebao-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Liebao-unsigned-ipa
+          path: src/Liebao-unsigned.ipa
+          retention-days: 7
