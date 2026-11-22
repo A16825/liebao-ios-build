@@ -88,12 +88,22 @@ jobs:
           echo "===== 日志尾部 ====="
           tail -50 build.log
           APP_DIR=build/Build/Products/Release-iphoneos/Liebao.app
-          if [ ! -d "$APP_DIR" ]; then
-            echo "::error::编译失败，没有产出 Liebao.app"
+          # 严格判定：xcodebuild 自己说了算 + 主二进制必须存在 + Info.plist 必须存在
+          if grep -q "\*\* BUILD FAILED \*\*" build.log; then
+            echo "::error::xcodebuild 报告 BUILD FAILED"
             exit 1
           fi
-          echo "OK: Liebao.app 已产出"
-          ls -la "$APP_DIR" | head -20
+          if [ ! -f "$APP_DIR/Liebao" ]; then
+            echo "::error::没有主二进制 $APP_DIR/Liebao（.app 残缺）"
+            ls -la "$APP_DIR" || true
+            exit 1
+          fi
+          if [ ! -f "$APP_DIR/Info.plist" ]; then
+            echo "::error::没有 Info.plist（.app 残缺）"
+            exit 1
+          fi
+          echo "OK: 产物完整"
+          ls -la "$APP_DIR" | head -25
 
       - name: 打包
         working-directory: src
