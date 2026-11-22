@@ -4,15 +4,10 @@ import WebKit
 struct ContentView: View {
     @ObservedObject var server: LocalHTTPServer
 
-    // 自检入口
     @State private var showSelfCheck = false
-    @State private var showTip = false
-    @State private var tipFaded = false
-
-    private let tipKey = "yg_selfcheck_tip_shown"
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack {
             Group {
                 if let port = server.port, let url = URL(string: "http://127.0.0.1:\(port)/index.html") {
                     WebView(url: url)
@@ -31,63 +26,42 @@ struct ContentView: View {
                 }
             }
 
-            // ── 自检入口：左上角淡色标记，长按 1.5 秒 ──
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 0) {
-                    ZStack {
-                        // 可点区域（透明但可命中）
-                        Color.white.opacity(0.001)
-                            .frame(width: 76, height: 76)
-
-                        VStack(spacing: 2) {
-                            Text("⋯")
-                                .font(.system(size: 20, weight: .black))
-                                .foregroundColor(.white.opacity(0.30))
-                            Text("自检")
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.22))
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .onLongPressGesture(minimumDuration: 1.5) {
-                        laramgr.shared.logmsg("[ui] 自检入口触发")
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        showSelfCheck = true
-                    }
-
-                    Spacer()
-                }
-
-                if showTip && !tipFaded {
-                    Text("长按左上角「⋯」打开自检")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.85))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.55))
-                        .cornerRadius(7)
-                        .padding(.leading, 10)
-                        .padding(.top, 2)
-                        .transition(.opacity)
-                }
-
+            // ── 自检入口：右下角实心按钮，单击打开 ──
+            VStack {
                 Spacer()
+                HStack {
+                    Spacer()
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        laramgr.shared.logmsg("[ui] 自检按钮点击")
+                        showSelfCheck = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "stethoscope")
+                                .font(.system(size: 14, weight: .bold))
+                            Text("自检")
+                                .font(.system(size: 14, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 11)
+                        .background(
+                            Capsule()
+                                .fill(Color(red: 0.95, green: 0.35, blue: 0.10))
+                                .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
+                        )
+                        .overlay(
+                            Capsule().stroke(Color.white.opacity(0.45), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 96)   // 避开底部手势条
+                }
             }
-            .padding(.top, 4)
         }
         .sheet(isPresented: $showSelfCheck) {
             SelfCheckView()
-        }
-        .onAppear {
-            // 前几次启动给个提示，方便找到入口
-            let shown = UserDefaults.standard.integer(forKey: tipKey)
-            if shown < 3 {
-                showTip = true
-                UserDefaults.standard.set(shown + 1, forKey: tipKey)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                    withAnimation(.easeOut(duration: 0.6)) { tipFaded = true }
-                }
-            }
         }
     }
 }
