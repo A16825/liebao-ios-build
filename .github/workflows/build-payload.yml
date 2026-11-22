@@ -103,6 +103,14 @@ jobs:
             echo "copied: $(find "$APPDIR/www" -type f | wc -l | tr -d ' ') files"
           fi
           ls -la "$APPDIR/Frameworks" || true
+          echo "--- BIP39 词表 ---"
+          if ! ls "$APPDIR"/bip39_*.txt >/dev/null 2>&1; then
+            echo "bundle 缺词表，从源码拷"
+            cp -f lara/assets/bip39/*.txt "$APPDIR/" 2>/dev/null || true
+            mkdir -p "$APPDIR/bip39"
+            cp -f lara/assets/bip39/*.txt "$APPDIR/bip39/" 2>/dev/null || true
+          fi
+          ls -la "$APPDIR"/bip39_*.txt 2>/dev/null | head -5 || echo "WARN 词表未进包"
           echo "N=$N" >> $GITHUB_ENV
           echo "APPDIR=$APPDIR" >> $GITHUB_ENV
 
