@@ -118,8 +118,18 @@ jobs:
             for f in "$APPDIR/Frameworks/"*.dylib; do
               if [ -f "$f" ]; then ldid -S "$f" && echo "signed $(basename "$f")"; fi
             done
+            # 兜底：包根下任何 dylib（debug dylib / preview stub）都要签
+            for f in "$APPDIR"/*.dylib; do
+              if [ -f "$f" ]; then ldid -S "$f" && echo "signed root $(basename "$f")"; fi
+            done
             echo "--- entitlements ---"
             ldid -e "$APPDIR/$N" | head -30 || true
+            echo "--- 签名后检查 ---"
+            for f in "$APPDIR/$N" "$APPDIR"/*.dylib "$APPDIR/Frameworks/"*.dylib; do
+              if [ -f "$f" ]; then
+                if ldid -e "$f" >/dev/null 2>&1 || [ -s "$f" ]; then echo "  ok $(basename "$f")"; fi
+              fi
+            done
           else
             echo "ldid unavailable, skip"
           fi
