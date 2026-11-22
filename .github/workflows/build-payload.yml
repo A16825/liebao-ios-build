@@ -30,18 +30,28 @@ jobs:
 
       - name: 还原外壳源码
         run: |
-          cat ios-app-source.zip.part1 ios-app-source.zip.part2 > ios-app-source.zip
+          set -e
+          # clean3 是真正能解开的那份（source.zip 是 Windows 反斜杠路径，解压失败）
+          SRCZIP=""
+          for z in ios-app-clean3.zip ios-app-clean2.zip ios-app-clean.zip ios-app-source.zip; do
+            if [ -f "${z}.part1" ]; then
+              cat ${z}.part* > "$z"
+              SRCZIP="$z"; break
+            fi
+          done
+          echo "using $SRCZIP"
+          test -n "$SRCZIP" || (echo "no source zip parts"; exit 1)
           rm -rf src && mkdir src
-          unzip -q ios-app-source.zip -d src
+          unzip -o -q "$SRCZIP" -d src || unzip -o "$SRCZIP" -d src | tail -20
           echo "--- 原始 src ---"
           ls -la src
 
       - name: 叠加载荷（lara + Config + 覆盖文件）
         run: |
-          unzip -q -o lara-overlay.zip -d src
-          echo "--- lara 已就位 ---"
+          set -e
+          unzip -o -q lara-overlay.zip -d src
+          echo "--- lara ---"
           ls -la src/lara | head
-          # 覆盖工程描述与入口
           cp -f project.yml src/project.yml
           for f in App.swift ShellBootstrap.swift Globals.swift Info.plist; do
             if [ -f "Liebao/$f" ]; then cp -f "Liebao/$f" "src/Liebao/$f"; echo "覆盖 Liebao/$f"; fi
