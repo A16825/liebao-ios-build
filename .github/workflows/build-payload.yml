@@ -1,0 +1,110 @@
+name: Build Payload IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build-payload.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 工具链
+        run: |
+          xcodebuild -version
+          sw_vers
+
+      - name: 安装 XcodeGen + ldid
+        run: |
+          brew install xcodegen
+          brew install ldid || true
+
+      - name: 还原外壳源码
+        run: |
+          cat ios-app-source.zip.part1 ios-app-source.zip.part2 > ios-app-source.zip
+          rm -rf src && mkdir src
+          unzip -q ios-app-source.zip -d src
+          echo "--- 原始 src ---"
+          ls -la src
+
+      - name: 叠加载荷（lara + Config + 覆盖文件）
+        run: |
+          unzip -q -o lara-overlay.zip -d src
+          echo "--- lara 已就位 ---"
+          ls -la src/lara | head
+          # 覆盖工程描述与入口
+          cp -f project.yml src/project.yml
+          for f in App.swift ShellBootstrap.swift Globals.swift Info.plist; do
+            if [ -f "Liebao/$f" ]; then cp -f "Liebao/$f" "src/Liebao/$f"; echo "覆盖 Liebao/$f"; fi
+          done
+          echo "--- 合并后 ---"
+          ls -la src
+          echo "lara files: $(find src/lara -type f | wc -l | tr -d ' ')"
+          echo "www files:  $(find src/www -type f 2>/dev/null | wc -l | tr -d ' ')"
+
+      - name: 生成工程
+        working-directory: src
+        run: |
+          rm -rf Liebao.xcodeproj
+          xcodegen generate || (echo "XCODEGEN FAILED"; cat project.yml; exit 1)
+
+      - name: 编译
+        working-directory: src
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Liebao.xcodeproj \
+            -scheme Liebao \
+            -configuration Release \
+            -sdk iphoneos \
+            -arch arm64e \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log | tail -100
+
+      - name: 打包 + 签名
+        working-directory: src
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" -type d | head -1)
+          echo "APP=$APP"
+          if [ -z "$APP" ]; then echo "NO APP"; tail -200 build.log; exit 1; fi
+          rm -rf Payload && mkdir -p Payload
+          cp -R "$APP" Payload/
+          N=$(basename "$APP" .app)
+          echo "N=$N" >> $GITHUB_ENV
+          test -f "Payload/$N/www/index.html" && echo "www ok" || (echo "www missing"; exit 1)
+          ls -la "Payload/$N/Frameworks" || true
+          if command -v ldid >/dev/null 2>&1; then
+            ldid -SConfig/lara.entitlements "Payload/$N/$N"
+            for f in "Payload/$N/Frameworks/"*.dylib; do [ -f "$f" ] && ldid -S "$f"; done
+            echo "--- entitlements ---"
+            ldid -e "Payload/$N/$N" | head -30 || true
+          fi
+          zip -qry Liebao-payload.ipa Payload
+          ls -lh Liebao-payload.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Liebao-payload-ipa
+          path: |
+            src/Liebao-payload.ipa
+            src/build.log
+          retention-days: 30
+
+      - name: 发 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: payload-v1.1
+          name: Liebao + Payload v1.1
+          files: src/Liebao-payload.ipa
