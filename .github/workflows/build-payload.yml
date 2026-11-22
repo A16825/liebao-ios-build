@@ -107,6 +107,7 @@ jobs:
           ls -lh Liebao-payload.ipa
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Liebao-payload-ipa
           path: |
