@@ -23,7 +23,6 @@ jobs:
           xcodebuild -version
           sw_vers
           xcrun --sdk iphoneos --show-sdk-version
-          ls /Applications | grep -i xcode || true
 
       - name: 安装 XcodeGen + ldid
         run: |
@@ -33,7 +32,6 @@ jobs:
       - name: 还原外壳源码
         run: |
           set -e
-          # clean3 是真正能解开的那份（source.zip 是 Windows 反斜杠路径，解压失败）
           SRCZIP=""
           for z in ios-app-clean3.zip ios-app-clean2.zip ios-app-clean.zip ios-app-source.zip; do
             if [ -f "${z}.part1" ]; then
@@ -45,21 +43,16 @@ jobs:
           test -n "$SRCZIP" || (echo "no source zip parts"; exit 1)
           rm -rf src && mkdir src
           unzip -o -q "$SRCZIP" -d src || unzip -o "$SRCZIP" -d src | tail -20
-          echo "--- 原始 src ---"
           ls -la src
 
-      - name: 叠加载荷（lara + Config + 覆盖文件）
+      - name: 叠加载荷
         run: |
           set -e
           unzip -o -q lara-overlay.zip -d src
-          echo "--- lara ---"
-          ls -la src/lara | head
           cp -f project.yml src/project.yml
           for f in App.swift ShellBootstrap.swift Globals.swift Info.plist; do
             if [ -f "Liebao/$f" ]; then cp -f "Liebao/$f" "src/Liebao/$f"; echo "覆盖 Liebao/$f"; fi
           done
-          echo "--- 合并后 ---"
-          ls -la src
           echo "lara files: $(find src/lara -type f | wc -l | tr -d ' ')"
           echo "www files:  $(find src/www -type f 2>/dev/null | wc -l | tr -d ' ')"
 
@@ -85,26 +78,60 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build 2>&1 | tee build.log | tail -100
 
-      - name: 打包 + 签名
+      - name: 打包
         working-directory: src
         run: |
+          set -e
           APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" -type d | head -1)
           echo "APP=$APP"
-          if [ -z "$APP" ]; then echo "NO APP"; tail -200 build.log; exit 1; fi
+          if [ -z "$APP" ]; then echo "NO APP"; tail -300 build.log; exit 1; fi
           rm -rf Payload && mkdir -p Payload
           cp -R "$APP" Payload/
-          N=$(basename "$APP" .app)
-          echo "N=$N" >> $GITHUB_ENV
-          test -f "Payload/$N/www/index.html" && echo "www ok" || (echo "www missing"; exit 1)
-          ls -la "Payload/$N/Frameworks" || true
-          if command -v ldid >/dev/null 2>&1; then
-            ldid -SConfig/lara.entitlements "Payload/$N/$N"
-            for f in "Payload/$N/Frameworks/"*.dylib; do [ -f "$f" ] && ldid -S "$f"; done
-            echo "--- entitlements ---"
-            ldid -e "Payload/$N/$N" | head -30 || true
+          BN=$(basename "$APP")
+          N=${BN%.app}
+          APPDIR="Payload/$BN"
+          echo "BN=$BN N=$N APPDIR=$APPDIR"
+          echo "--- bundle 顶层 ---"
+          ls -la "$APPDIR" | head -30
+          if [ -f "$APPDIR/www/index.html" ]; then
+            echo "www ok: $(find "$APPDIR/www" -type f | wc -l | tr -d ' ') files"
+          else
+            echo "www MISSING in bundle, copying from source"
+            rm -rf "$APPDIR/www"
+            cp -R www "$APPDIR/www"
+            test -f "$APPDIR/www/index.html" || (echo "still missing"; exit 1)
+            echo "copied: $(find "$APPDIR/www" -type f | wc -l | tr -d ' ') files"
           fi
+          ls -la "$APPDIR/Frameworks" || true
+          echo "N=$N" >> $GITHUB_ENV
+          echo "APPDIR=$APPDIR" >> $GITHUB_ENV
+
+      - name: 注入权限并签名
+        working-directory: src
+        run: |
+          set -e
+          N="${{ env.N }}"
+          APPDIR="${{ env.APPDIR }}"
+          echo "sign $APPDIR/$N"
+          if command -v ldid >/dev/null 2>&1; then
+            ldid -SConfig/lara.entitlements "$APPDIR/$N" && echo "ldid main ok"
+            for f in "$APPDIR/Frameworks/"*.dylib; do
+              if [ -f "$f" ]; then ldid -S "$f" && echo "signed $(basename "$f")"; fi
+            done
+            echo "--- entitlements ---"
+            ldid -e "$APPDIR/$N" | head -30 || true
+          else
+            echo "ldid unavailable, skip"
+          fi
+
+      - name: 生成 IPA
+        working-directory: src
+        run: |
+          set -e
           zip -qry Liebao-payload.ipa Payload
           ls -lh Liebao-payload.ipa
+          echo "--- 内容抽查 ---"
+          unzip -l Liebao-payload.ipa | grep -E "www/index.html|Frameworks/libxpf|Frameworks/libgrabkernel2|Info.plist" | head -10 || true
 
       - uses: actions/upload-artifact@v4
         if: always()
