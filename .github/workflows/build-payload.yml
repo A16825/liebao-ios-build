@@ -10,10 +10,15 @@ on:
 permissions:
   contents: write
 
+# 防止 push 触发和 workflow_dispatch 同时开两个 run 互相取消
+concurrency:
+  group: build-payload
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v4
