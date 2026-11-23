@@ -50,6 +50,8 @@ targets:
   Liebao:
     type: application
     platform: iOS
+      dependencies:
+        - sdk: libsqlite3.tbd
     sources:
       - path: Liebao
       - path: lara
